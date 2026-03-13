@@ -1,0 +1,225 @@
+# Chocolate Sales Performance Analysis
+# import libraries -----
+library(dplyr)
+library(readr)
+install.packages("ggplot2")
+library(ggplot2)
+library(magrittr)
+getwd()
+install.packages("tidyverse")
+library(tidyverse)
+
+# import dataset -------
+calendar <- read.csv("datasets/calendar.csv")
+customers <- read.csv("datasets/customers.csv")
+products <- read.csv("datasets/products.csv")
+sales <- read.csv("datasets/sales.csv")
+stores <- read.csv("datasets/stores.csv")
+
+glimpse(calendar)
+summary(calendar)
+
+glimpse(customers) 
+customers$loyalty_member <- factor(customers$loyalty_member, levels = c(1,0),
+                                  labels = c("Yes", "No"))
+glimpse(products)
+glimpse(sales)
+glimpse(stores)
+
+# data cleaning and manipulation ----
+## check null value------
+colSums(is.na(sales))
+sales %>% summarise(n_distinct(order_id), n())
+
+colSums(is.na(products))
+products %>% summarise(n_distinct(product_id), n())
+
+colSums(is.na(customers))
+customers %>% summarise(n_distinct(customer_id), n())
+
+colSums(is.na(stores))
+stores %>% summarise(n_distinct(store_id), n())
+
+## join tables----
+
+sales_overall <- sales %>% 
+                    left_join(select(products, product_id, product_name,product_name, category), by = "product_id") %>%
+                    left_join(stores, by = "store_id") %>%
+                    left_join(customers, by = "customer_id")
+sales_overall
+glimpse(sales_overall)
+
+# Overall Sales Performance-----
+## summarise-Overall Sales Performance
+
+sales_overall %>%
+  summarise(
+    total_order <- n_distinct(order_id),
+    total_revenue <- sum(revenue, na.rm = TRUE),
+    total_quantity_sold <- sum(quantity, na.rm = TRUE),
+    total_unit_price <-  sum(unit_price, na.rm = TRUE),
+    total_discount <- sum(discount, na.rm = TRUE),
+    total_profit <- sum(profit, na.rm = TRUE)
+  )
+
+## Product Analysis----
+# Top 5 Best Selling product_name 
+sales_overall$product_name <- factor(sales_overall$product_name)
+top5_product_name <- sales_overall %>%
+                group_by(product_name) %>%
+                summarise(
+                  total_quant = sum(quantity),
+                  total_rev = sum(revenue),
+                  .groups = "drop"
+                ) %>%
+              arrange (desc(total_quant)) %>%
+              slice_head(n = 5) 
+
+barplot(
+  height = top5_product_name$total_quant,
+  names.arg = top5_product_name$product_name,
+  main = "Top 5 Best Selling product_names",
+  xlab = "product_names", ylab = "Total Quantity Sold", yaxt = "n",
+  col = "#4B2E2B"
+) 
+# Top 10 Products by Revenue
+sales_overall$product_name <- factor(sales_overall$product_name)
+top5_product_name <- sales_overall %>%
+  group_by(product_name) %>%
+  summarise(
+    total_quant = sum(quantity),
+    total_rev = sum(revenue),
+    .groups = "drop"
+  ) %>%
+  arrange (desc(total_rev)) %>%
+  slice_head(n = 5) 
+
+barplot(
+  height = top5_product_name$total_rev,
+  names.arg = top5_product_name$product_name,
+  main = "Top 10 Products",
+  xlab = "Total Quantity Sold", ylab = "Product Names", #yaxt = "n",
+  col = "#4B2E2B" #, horiz = TRUE
+) 
+
+## Sales Performance Analysis
+# Sales Quantity Overtime by Month
+sales_overall <- sales_overall %>%
+  mutate(
+    # 1. Make sure order_date is a Date
+    order_date = as.Date(order_date)   # or as.Date(order_date, format = "%d/%m/%Y") if needed
+  ) %>%
+  mutate(
+    # 2. Extract year and month as text
+    year  = format(order_date, "%Y"),
+    month = format(order_date, "%m"),
+    # 3. Create a proper first-of-month date
+    year_month = as.Date(paste(year, month, "01", sep = "-"))
+  )
+
+sales_monthly <- sales_overall %>%
+  group_by(year_month) %>%
+  summarise(
+    total_quant = sum(quantity, na.rm = TRUE),
+    total_rev   = sum(revenue,  na.rm = TRUE),
+    .groups = "drop"
+  )
+
+sales_monthly %>% ggplot(aes(x= year_month, y = total_quant, group = 1)) + 
+  geom_line(colour = "#8C5A3C", linewidth = 1) + geom_point(colour = "#8C5A3C") +
+  labs(
+    title = "Monthly Sales Volume Over Time",
+    x = "Month", y = "Total Volume"
+  )
+
+# Revenue by Country and Store Type
+
+rev_country_store <- sales_overall %>%
+  group_by(country, store_type) %>%
+  summarise(
+    total_revenue = sum(revenue, na.rm = TRUE),
+    .groups = "drop"
+  )
+rev_country_store
+rev_country_store %>%
+  ggplot(aes(x = country,
+             y = total_revenue,
+             fill = store_type)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Revenue by Country and Store Type",
+    x = "Country",
+    y = "Total Revenue",
+    fill = "Store Type" 
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  ) + scale_fill_manual(
+    values = c(
+      "Airport" = "#4B2E2B",
+      "Mall" = "#6e5755",
+      "Online" = "#93817f",
+      "Retail" = "#c9c0bf"
+    )
+    
+  )
+# Performance by Store Revenue
+rev_by_store <- sales_overall %>%
+  group_by(store_type) %>%
+  summarise(
+    total_revenue = sum(revenue, na.rm = TRUE),
+    .groups = "drop"
+  )
+rev_by_store
+rev_by_store %>%
+  ggplot(aes(x = store_type,
+             y = total_revenue, fill = store_type)) +
+  geom_col() +  
+  labs(
+    title = "Revenue by Store Type",
+    x = "Store Type",
+    y = "Total Revenue", fill = "Store Type"
+  ) + theme(
+    plot.title = element_text(hjust = 0.5)
+  ) + scale_fill_manual(
+    values = c(
+      "Airport" = "#4B2E2B",
+      "Mall" = "#6e5755",
+      "Online" = "#93817f",
+      "Retail" = "#c9c0bf"
+    )
+    
+  )
+    
+## Customer Analysis-----
+# Avg. Age
+mean(sales_overall$age)
+quantile(sales_overall$age)
+
+# Revenue by Gender
+sales_overall$gender <- factor(sales_overall$gender)
+rev_by_gender <- sales_overall %>%
+  group_by(gender) %>%
+  summarise(
+    total_rev = sum(revenue),
+    .groups = "drop"
+  )
+
+barplot(
+  height = rev_by_gender$total_rev,
+  names.arg = rev_by_gender$gender,
+  main = " Revenue Earned by Gender",
+  xlab = "Gender", ylab = "Revenue", yaxt = "n",
+  col = "#4B2E2B" 
+) 
+
+# Loyal Membership by Gender
+sales_overall$loyalty_member <- factor(sales_overall$loyalty_member)
+loyal_gender <- table(sales_overall$loyalty_member, sales_overall$gender) %>% 
+  prop.table(margin = 2)
+loyal_gender
+
+loyal_gender %>%barplot(
+  main = "Loyal Member by Gender",
+  xlab = "Gender", ylab = "Loyal Member",yaxt = "n",beside=TRUE,legend=rownames(loyal_gender), col = c("#4B2E2B","#93817f") )
+
